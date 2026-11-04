@@ -36,10 +36,14 @@ class FlowmeterComms {
   std::atomic<bool> running_{false};
   std::atomic<std::uint64_t> pulse_count_{0};
 
-  // TODO 3: declare a core::ThreadSafeDeque<T> here.
-  //         Decide what T is (what does one pulse carry?).
+  // Instantiate the threadSafeDeque; we only count timestamps for this project, but
+  // If we preserve the timestamp, we could later calculate flow rates and things like that
+  core::ThreadSafeDeque<std::uint64_t> pulse_queue_;
 
   // Threads go LAST so they are destroyed before everything above.
+  // Instantiate pulse_count_ that the consumer increments and main reads 
+  std::atomic<std::uint64_t> pulse_count_{0};
+
   std::thread reader_thread_;
   std::thread processor_thread_;
 };
