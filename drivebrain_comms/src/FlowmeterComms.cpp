@@ -14,8 +14,8 @@
 
 namespace comms {
 
-std::uint64 FlowmeterComms::get_pulse_count() const {
-  
+std::uint64_t FlowmeterComms::get_pulse_count() const {
+    return pulse_count_.load();
 
 
 }
