@@ -6,6 +6,7 @@ find_package(Protobuf REQUIRED CONFIG)
 find_package(foxglove-websocket REQUIRED)
 find_package(mcap REQUIRED)
 find_package(spdlog REQUIRED)
+find_package(Threads REQUIRED)
 
 # Add your source files here
 add_executable(mini-drivebrain
