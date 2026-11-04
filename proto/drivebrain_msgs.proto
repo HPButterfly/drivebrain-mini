@@ -9,4 +9,5 @@ it in real time
 
 message FlowmeterData {
   uint64 pulse_count = 1;
+  uint64 timestamp_ns = 2;
 }
