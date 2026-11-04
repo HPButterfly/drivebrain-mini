@@ -2,4 +2,11 @@ syntax = "proto3";
 
 package drivebrain_msgs;
 
-// Add your messages here
+// This is the data that is sent to both FoxgloveServer & MCAPLogger
+//1. FoxgloveServer takes the message & streams it live over the WebSocket, so Foxglove Studio can plot 
+it in real time
+//2. MCAPLogger takes the same message and writes it to the .mcap file, so you can replay the run later.
+
+message FlowmeterData {
+  uint64 pulse_count = 1;
+}
