@@ -1,12 +1,12 @@
 #pragma once
 #include <linux/gpio.h>
 
-#include <DriverBus.hpp>
+#include <DriverBus.hpp>  // for core::ThreadSafeDeque directly
 
-#include <atomic>
-#include <cstdint>
-#include <string>
-#include <thread>
+#include <atomic> // std::atomic: lets two threads share a value without a lock
+#include <cstdint> // fixed-size integers like std::uint64_t
+#include <string> // std::string, for the GPIO chip path
+#include <thread> // std::thread, for the two worker threads
 
 namespace comms {
 // FlowmeterComms: reads pulses from a flowmeter wired to a Raspberry Pi GPIO pin.
