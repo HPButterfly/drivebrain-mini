@@ -124,7 +124,34 @@ FlowmeterComms::~FlowmeterComms() {
 
 // PRODUCER: waits for rising edges and pushes their timestamps to the queue.
 void FlowmeterComms::read_pin_worker() {
+    pollfd gpio_poll{};
+    gpio_poll.fd = line_fd_;
+    gpio_poll.events = POLLIN;
+    while (running_) {
 
+        // Wait for a GPIO event, checking periodically for shutdown.
+        int result = poll(&gpio_poll, 1, 100)
+
+        if(result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+
+            spdlog::error("GPIO poll failed: {}", std::strerror(errno));
+            running_ = false;
+            break;
+
+        }
+
+        if (result == 0) {
+            continue;
+        }
+
+
+
+
+
+    }
 
 
 
@@ -135,25 +162,26 @@ void FlowmeterComms::read_pin_worker() {
 // then handles them after releasing it.
 void FlowmeterComms::process_data_worker() {
     while (true) {
-        std::deque<std::uint64_t> batch;
+        
+     std::uint64_t timestamp = 0;
 
         {
             std::unique_lock<std::mutex> lock(pulse_queue_.mtx);
+
+            // Wait until a pulse arrives or shutdown is requested.
             pulse_queue_.cv.wait(lock, [this] {
                 return !pulse_queue_.deque.empty() || !running_;
             });
 
+            // Finish only after all queued pulses are processed.
             if (pulse_queue_.deque.empty() && !running_) {
                 break;
             }
 
-            // Move everything out while holding the lock.
-            batch.swap(pulse_queue_.deque);
-        }  // lock released here
-
-        // Handle the pulses with the lock released.
-        pulse_count_.fetch_add(batch.size());
-    }
+            // Retrieve the oldest timestamp.
+            timestamp = pulse_queue_.deque.front();
+            pulse_queue_.deque.pop_front();
+        }
 }
 
     
