@@ -40,10 +40,54 @@ FlowmeterComms::FlowmeterComms(
     // Configure a request for one GPIO line.
     gpio_v2_line_request request{};
 
+    request.offsets[0] = gpio_line_offset;
+    request.num_lines = 1;
+
+    request.config.flags =
+        GPIO_V2_LINE_FLAG_INPUT |
+        GPIO_V2_LINE_FLAG_EDGE_RISING;
+
+    std::snprintf(
+        request.consumer,
+        sizeof(request.consumer),
+        "flowmeter"
+    );
+
+    // Request the GPIO line from the Linux kernel.
+    if (ioctl(chip_fd_, GPIO_V2_GET_LINE_IOCTL, &request) < 0) {
+        int error = errno;
+        close(chip_fd_);
+        chip_fd_ = -1;
+
+        throw std::runtime_error(
+            std::string("Failed to request GPIO line: ") +
+            std::strerror(error));
+    }
+
+    line_fd_ = request.fd;
+    
+    // Allows both threads to run
+    running_ = true;
+
+    try {
+        // Starts the processor first so it is ready for incoming pulses.
+        processor_thread_ =
+            td::thread(&FlowmeterComms::process_data_worker, this);
+
+        // Starts reading GPIO events.
+        reader_thread_ =
+            std::thread(&FlowmeterComms::read_pin_worker, this);
+    }
+
+    except {
+
+
+
+        }
+    
+
 std::uint64_t FlowmeterComms::get_pulse_count() const {
     return pulse_count_.load();
-
-
 }
 
 } //namespace comms
