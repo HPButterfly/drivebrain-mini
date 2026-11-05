@@ -71,59 +71,55 @@ FlowmeterComms::FlowmeterComms(
 
     try {
         // Starts the processor first so it is ready for incoming pulses.
-        processor_thread_ =
-            td::thread(&FlowmeterComms::process_data_worker, this);
+        processor_thread_ = std::thread(&FlowmeterComms::process_data_worker, this);
 
         // Starts reading GPIO events.
-        reader_thread_ =
-            std::thread(&FlowmeterComms::read_pin_worker, this);
+        reader_thread_ = std::thread(&FlowmeterComms::read_pin_worker, this);
     }
 
     catch (...) {
-        running_ = false;
+       {
+            std::lock_guard<std::mutex> lock(pulse_queue_.mtx);
+            running_ = false;
+        }
         pulse_queue_.cv.notify_all();
 
         if (processor_thread_.joinable()) {
             processor_thread_.join();
         }
-
-           close(line_fd_);
+        close(line_fd_);
         close(chip_fd_);
-
         line_fd_ = -1;
         chip_fd_ = -1;
-
         throw;
-    }
+}
 
 // Destructor: Stops both threads before releasing GPIO resources.
 FlowmeterComms::~FlowmeterComms() {
+    // Set the flag while holding the queue's mutex so the consumer can't
+    // miss the wakeup between checking its condition and going to sleep.
+    {
+        std::lock_guard<std::mutex> lock(pulse_queue_.mtx);
+        running_ = false;
+    }
+    pulse_queue_.cv.notify_all();
 
-    running_ = false;
-
-    // Wait for the reader to finish.
     if (reader_thread_.joinable()) {
         reader_thread_.join();
     }
-
-    // Wake the processor so it can finish processing queued pulses.
-    pulse_queue_.cv.notify_all();
-
     if (processor_thread_.joinable()) {
         processor_thread_.join();
     }
 
-    // Close GPIO file descriptors.
+    // Closes GPIO file descriptors
     if (line_fd_ >= 0) {
         close(line_fd_);
         line_fd_ = -1;
     }
-
     if (chip_fd_ >= 0) {
         close(chip_fd_);
         chip_fd_ = -1;
     }
-    
 }
 
 // Reader thread: waits for rising-edge GPIO events
@@ -156,6 +152,31 @@ void FlowmeterComms::read_pin_worker() {
 
 
 
+}
+
+// CONSUMER: sleeps until pulses arrive, takes them out under the lock,
+// then handles them after releasing it.
+void FlowmeterComms::process_data_worker() {
+    while (true) {
+        std::deque<std::uint64_t> batch;
+
+        {
+            std::unique_lock<std::mutex> lock(pulse_queue_.mtx);
+            pulse_queue_.cv.wait(lock, [this] {
+                return !pulse_queue_.deque.empty() || !running_;
+            });
+
+            if (pulse_queue_.deque.empty() && !running_) {
+                break;
+            }
+
+            // Move everything out while holding the lock.
+            batch.swap(pulse_queue_.deque);
+        }  // lock released here
+
+        // Handle the pulses with the lock released.
+        pulse_count_.fetch_add(batch.size());
+    }
 }
 
     
