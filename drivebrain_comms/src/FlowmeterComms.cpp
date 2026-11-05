@@ -122,33 +122,10 @@ FlowmeterComms::~FlowmeterComms() {
     }
 }
 
-// Reader thread: waits for rising-edge GPIO events
-// and pushes their timestamps into the shared queue.
+// PRODUCER: waits for rising edges and pushes their timestamps to the queue.
 void FlowmeterComms::read_pin_worker() {
 
-    while (true) {
-        std::uint64_t timestamp = 0;
 
-        {
-            std::unique_lock<std::mutex> lock(pulse_queue_.mtx);
-
-            // Wait until a pulse arrives or shutdown is requested.
-            pulse_queue_.cv.wait(lock, [this] {
-                return !pulse_queue_.deque.empty() || !running_;
-            });
-
-            // Finish only after all queued pulses are processed.
-            if (pulse_queue_.deque.empty() && !running_) {
-                break;
-            }
-
-            // Retrieve the oldest timestamp.
-            timestamp = pulse_queue_.deque.front();
-            pulse_queue_.deque.pop_front();
-        }
-
-        // Increment the total pulse count.
-        std::uint64_t count = pulse_count_.fetch_add(1) + 1;
 
 
 
