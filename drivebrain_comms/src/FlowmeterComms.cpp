@@ -147,15 +147,59 @@ void FlowmeterComms::read_pin_worker() {
             continue;
         }
 
+        if (gpio_poll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            spdlog::error("GPIO poll reported an error");
+            running_ = false;
+            break;
+        }
 
+        if(!(gpio_poll.revents & POLLIN)) {
+            continue;
+        }
 
+          // Read the GPIO event.
+        gpio_v2_line_event event{};
 
+        ssize_t bytes_read = read(
+            line_fd_,
+            &event,
+            sizeof(event)
+        );
 
+        if (bytes_read < 0) {
+            if (errno == EINTR || errno == EAGAIN) {
+                continue;
+            }
+
+            spdlog::error("GPIO read failed: {}", std::strerror(errno));
+            running_ = false;
+            break;
+        }
+
+        if (bytes_read != sizeof(event)) {
+            spdlog::error("Incomplete GPIO event received");
+            running_ = false;
+            break;
+        }
+
+        // Only process rising-edge events.
+        if (event.id != GPIO_V2_LINE_EVENT_RISING_EDGE) {
+            continue;
+        }
+
+        // The kernel provides the event timestamp in nanoseconds.
+        std::uint64_t timestamp = event.timestamp_ns;
+
+        // Add the timestamp to the shared queue.
+        {
+            std::lock_guard<std::mutex> lock(pulse_queue_.mtx);
+
+            pulse_queue_.deque.push_back(timestamp);
+        }
+
+        // Notify the processor that a new pulse is available.
+        pulse_queue_.cv.notify_one();
     }
-
-
-
-
 }
 
 // CONSUMER: sleeps until pulses arrive, takes them out under the lock,
@@ -182,10 +226,29 @@ void FlowmeterComms::process_data_worker() {
             timestamp = pulse_queue_.deque.front();
             pulse_queue_.deque.pop_front();
         }
-}
+        // Increment the total pulse count.
+        std::uint64_t count = pulse_count_.fetch_add(1) + 1;
 
-    
-    
+        // Create the Protobuf telemetry message.
+        auto message =
+            std::make_shared<drivebrain_msgs::FlowmeterData>();
+
+        message->set_pulse_count(count);
+        message->set_timestamp_ns(timestamp);
+
+        // Send the message to Foxglove for live visualization.
+        core::FoxgloveServer::instance().send_live_telem_msg(
+            message,
+            "/flowmeter"
+        );
+
+        // Record the same message in the MCAP file.
+        core::MCAPLogger::instance().log_msg(
+            message,
+            "/flowmeter"
+        );
+    }
+}
     
 
 std::uint64_t FlowmeterComms::get_pulse_count() const {
