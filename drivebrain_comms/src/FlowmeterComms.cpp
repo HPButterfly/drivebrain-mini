@@ -83,7 +83,7 @@ FlowmeterComms::FlowmeterComms(
 
 
 
-        }
+    }
     
 
 std::uint64_t FlowmeterComms::get_pulse_count() const {
