@@ -79,11 +79,55 @@ FlowmeterComms::FlowmeterComms(
             std::thread(&FlowmeterComms::read_pin_worker, this);
     }
 
-    except {
+    catch (...) {
+        running_ = false;
+        pulse_queue_.cv.notify_all();
 
+        if (processor_thread_.joinable()) {
+            processor_thread_.join();
+        }
 
+           close(line_fd_);
+        close(chip_fd_);
 
+        line_fd_ = -1;
+        chip_fd_ = -1;
+
+        throw;
     }
+
+    // Destructor: Stops both threads before releasing GPIO resources.
+    FlowmeterComms::~FlowmeterComms() {
+
+    running_ = false;
+
+    // Wait for the reader to finish.
+    if (reader_thread_.joinable()) {
+        reader_thread_.join();
+    }
+
+    // Wake the processor so it can finish processing queued pulses.
+    pulse_queue_.cv.notify_all();
+
+    if (processor_thread_.joinable()) {
+        processor_thread_.join();
+    }
+
+    // Close GPIO file descriptors.
+    if (line_fd_ >= 0) {
+        close(line_fd_);
+        line_fd_ = -1;
+    }
+
+    if (chip_fd_ >= 0) {
+        close(chip_fd_);
+        chip_fd_ = -1;
+    }
+    
+    }
+
+    
+    
     
 
 std::uint64_t FlowmeterComms::get_pulse_count() const {
