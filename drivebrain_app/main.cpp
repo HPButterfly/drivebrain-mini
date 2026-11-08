@@ -8,6 +8,7 @@
 #include <thread>
 #include <fmt/chrono.h>
 #include <spdlog/spdlog.h>
+#include <FlowmeterComms.hpp>
 
 std::atomic<bool> running{true};
 
@@ -30,6 +31,21 @@ int main() {
 
   spdlog::info("Constructed logging singletons");
 
+  // ADDED: create the flowmeter AFTER the logging singletons exist,
+  // because its consumer thread calls the logger.
+  constexpr const char* kGpioChip = "/dev/gpiochip0";
+  constexpr std::uint32_t kGpioLine = 12;
+  std::unique_ptr<comms::FlowmeterComms> flowmeter;
+  try {
+    flowmeter = std::make_unique<comms::FlowmeterComms>(kGpioChip, kGpioLine);
+  } catch (const std::exception& e) {
+    spdlog::error("Failed to start flowmeter: {}", e.what());
+    core::MCAPLogger::instance().destroy();
+    core::FoxgloveServer::instance().destroy();
+    return 1;
+  }
+  std::uint64_t last_count = 0;
+
   auto loop_time = 0.004;
   std::chrono::microseconds loop_time_ms((int) (loop_time * 1000000.0f));
   auto next_tick = std::chrono::steady_clock::now();
@@ -44,8 +60,19 @@ int main() {
       next_tick = now;
     }
 
+    // ADDED: read the latest count (atomic, so this is thread-safe) and log it.
+    std::uint64_t count = flowmeter->get_pulse_count();
+    if (count != last_count) {
+      spdlog::info("Pulse count: {}", count);
+      last_count = count;
+    }
+
     std::this_thread::sleep_until(next_tick);
   }
+
+  // ADDED: stop and join the flowmeter threads BEFORE the logger is destroyed,
+  // so the consumer can't log into a dead logger and the MCAP closes cleanly.
+  flowmeter.reset();
 
   core::MCAPLogger::instance().destroy();
   core::FoxgloveServer::instance().destroy();
