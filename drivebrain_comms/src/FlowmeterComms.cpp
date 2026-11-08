@@ -92,7 +92,9 @@ FlowmeterComms::FlowmeterComms(
         line_fd_ = -1;
         chip_fd_ = -1;
         throw;
+    }
 }
+    
 
 // Destructor: Stops both threads before releasing GPIO resources.
 FlowmeterComms::~FlowmeterComms() {
@@ -130,7 +132,7 @@ void FlowmeterComms::read_pin_worker() {
     while (running_) {
 
         // Wait for a GPIO event, checking periodically for shutdown.
-        int result = poll(&gpio_poll, 1, 100)
+        int result = poll(&gpio_poll, 1, 100);
 
         if(result < 0) {
             if (errno == EINTR) {
@@ -176,7 +178,7 @@ void FlowmeterComms::read_pin_worker() {
             break;
         }
 
-        if (bytes_read != sizeof(event)) {
+        if (bytes_read != static_cast<ssize_t>(sizeof(event)) {
             spdlog::error("Incomplete GPIO event received");
             running_ = false;
             break;
